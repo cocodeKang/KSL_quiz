@@ -1,292 +1,192 @@
-<!doctype html>
-<html lang="ko">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>수어 영상퀴즈</title>
-  <style>
-    :root{ --bg:#0f172a; --panel:#111827; --muted:#94a3b8; --text:#e5e7eb; --accent:#22c55e; --accent-2:#38bdf8; }
-    *{box-sizing:border-box}
-    html,body{margin:0; background:var(--bg); color:var(--text); font-family: system-ui, -apple-system, Segoe UI, Roboto, Noto Sans KR, sans-serif;}
-    .wrap{max-width:1100px;margin:0 auto;padding:20px}
-    header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
-    header h1{font-size:clamp(18px,3.2vw,28px);margin:0}
-    .card{background:linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02)); border:1px solid rgba(255,255,255,0.08); border-radius:16px; padding:18px; box-shadow: 0 10px 30px rgba(0,0,0,.3)}
-    .row{display:flex;gap:16px;flex-wrap:wrap}
-    .col{flex:1 1 320px}
-    .muted{color:var(--muted)}
-    button{background:linear-gradient(135deg, var(--accent), #16a34a); color:#00110a; font-weight:700; border:0; border-radius:12px; padding:14px 18px; font-size:18px; cursor:pointer; transition:transform .05s ease, filter .2s ease; touch-action:manipulation}
-    button:hover{filter:brightness(1.05)}
-    button:active{transform:scale(0.98)}
-    button.secondary{background:linear-gradient(135deg, var(--accent-2), #0284c7); color:#001018}
-    .panel{display:flex;flex-direction:column; gap:12px}
-    .label{font-size:clamp(18px,3.2vw,26px);font-weight:800}
-    .badge{display:inline-block; padding:4px 10px; border-radius:999px; font-size:12px; background:#0b1220; border:1px solid rgba(255,255,255,0.1); color:var(--muted)}
-    .progress{height:10px; background:#111827; border-radius:999px; overflow:hidden; border:1px solid rgba(255,255,255,0.08)}
-    .bar{height:100%; background:linear-gradient(90deg, var(--accent), var(--accent-2)); width:0%}
-    .spacer{height:8px}
-    .footnote{font-size:12px;color:var(--muted)}
-    .list{max-height:240px; overflow:auto; border:1px dashed rgba(255,255,255,0.15); border-radius:12px; padding:8px}
-
-    /* ===== 전체화면(오버레이) 이중 영상 ===== */
-    .fsDual{position:fixed; inset:0; background:#000; z-index:9999; display:none; padding:12px}
-    .fsGrid{height:100%; display:grid; grid-template-columns:1fr; gap:12px}
-    @media(min-width:720px){ .fsGrid{grid-template-columns:1fr 1fr} }
-    .fsDual video{width:100%; height:100%; object-fit:contain; background:#000; border-radius:8px; z-index:1}
-    .fsDual .topbar{position:absolute; top:10px; right:12px; display:flex; gap:8px; z-index:10000; pointer-events:auto}
-    .ghostBtn{background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.25); color:#fff; padding:10px 12px; border-radius:10px; font-weight:800; cursor:pointer; touch-action:manipulation}
-    .ghostBtn:active{transform:scale(.98)}
-
-    /* iOS 일부 브라우저에서 비디오가 버튼 클릭을 가리는 현상 대응 */
-    .fsLayer{position:relative; width:100%; height:100%}
-    .fsLayer .btnTrap{position:absolute; top:8px; right:10px; z-index:10001; display:flex; gap:8px}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <header>
-      <h1>수어 영상퀴즈</h1>
-      <div class="toolbar">
-        <button id="restartBtn" class="secondary" title="처음부터 랜덤 재시작" type="button">🔁 재시작</button>
-        <button id="skipBtn" title="현재 문제 건너뛰기" type="button">⏭️ 건너뛰기</button>
-      </div>
-    </header>
-
-    <div class="card panel">
-      <div class="row">
-        <div class="col">
-          <div class="badge" id="meta"></div>
-          <div class="label" id="prompt">시작을 누르면 표제어부터 제시됩니다.</div>
-          <div class="spacer"></div>
-          <div class="progress" aria-hidden="true"><div class="bar" id="bar"></div></div>
-          <div class="spacer"></div>
-          <div class="center">
-            <button id="primaryBtn" type="button">▶ 시작</button>
-          </div>
-        </div>
-        <div class="col">
-          <div class="badge">진행 안내</div>
-          <ol class="muted" style="margin:8px 0 0 18px; line-height:1.6">
-            <li><b>표제어 화면</b> — 한국어 대응표현만 보여줍니다.</li>
-            <li><b>두 영상 동시 재생</b> — 정답/오답 2개 영상이 전용 전체화면 오버레이로 자동 재생(무음).</li>
-            <li><b>정답 확인</b> — 정답 영상만 다시 크게 재생합니다.</li>
-          </ol>
-          <p class="footnote">모든 문제와 보기 위치는 매 회차마다 랜덤입니다.</p>
-        </div>
-      </div>
-    </div>
-
-    <!-- (기존 stageDual 카드는 숨김/미사용) -->
-    <div class="card panel" id="stageDual" style="display:none"></div>
-
-    <div class="card panel" id="stageAnswer" style="display:none">
-      <div class="badge">정답 영상</div>
-      <div class="label" id="answerLabel"></div>
-      <video id="answerVideo" preload="metadata" playsinline muted loop controls></video>
-      <div class="center"><button id="nextBtn" type="button">다음 문제</button></div>
-    </div>
-
-    <details class="list" style="margin-top:14px">
-      <summary>📄 데이터 목록 (확인용)</summary>
-      <div id="dataEcho" class="footnote"></div>
-    </details>
-  </div>
-
-  <!-- ===== 전체화면 오버레이: 힌트/텍스트 없이 영상만 ===== -->
-  <div id="fsDual" class="fsDual" aria-label="두 영상 동시 재생">
-    <div class="fsGrid">
-      <div class="fsLayer">
-        <video id="fsVidL" preload="metadata" playsinline muted loop></video>
-        <div class="btnTrap">
-          <button id="fsToAnswerBtn" class="ghostBtn" type="button" aria-label="정답 화면으로">정답 화면</button>
-          <button id="fsCloseBtn" class="ghostBtn" type="button" aria-label="닫기">닫기</button>
-        </div>
-      </div>
-      <div class="fsLayer">
-        <video id="fsVidR" preload="metadata" playsinline muted loop></video>
-      </div>
-    </div>
-  </div>
-
-<script>
-/* ===== 1) 데이터 (사용자 제공 목록) ===== */
-const ITEMS = [
-  {g:"곤충", k:"모기, 벌", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202310/asmMaKkD4GS7gkZA.mp4"},
-  {g:"곤충", k:"개미", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202509/bH3K0cR4OFufrCwY.mp4"},
-  {g:"과일", k:"수박", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202312/hQ2rRHRJ6PxsN6Hu.mp4"},
-  {g:"과일", k:"감", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/mCyt3d67zZ4XAzpM.mp4"},
-  {g:"과일", k:"포도", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/MU9fwduuL3VV2pFA.mp4"},
-  {g:"과일", k:"배[과일]", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/6QK9OBbhwtZK9626.mp4"},
-  {g:"과일", k:"딸기", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/dFwIISHASItQYrv3.mp4"},
-  {g:"과일", k:"바나나", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/I0Z2L1zObk3s113i.mp4"},
-  {g:"과일", k:"참외", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/VIc6mXpupx1v4skZ.mp4"},
-  {g:"교통", k:"오토바이, 오토바이를 타다", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202310/pfHjaHHmFUhEyiXI.mp4"},
-  {g:"교통", k:"비행기", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/Gh871U2oWIHK8s6n.mp4"},
-  {g:"교통", k:"자전거", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/9c4AT8W4qyWBH2Es.mp4"},
-  {g:"교통", k:"지하철, 전동차", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/U1kvtqDGpOloKjHO.mp4"},
-  {g:"교통", k:"택시", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/x8PUpOjyV6tblWmK.mp4"},
-  {g:"교통", k:"차", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/CnS4kM3pofNo1brv.mp4"},
-  {g:"동물", k:"오징어", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202309/TVsGvzHe5upx1lze.mp4"},
-  {g:"동물", k:"개구리", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202312/4eKYDo9An4ssdpR5.mp4"},
-  {g:"동물", k:"고양이", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202312/LhvonIhGHuezvLtw.mp4"},
-  {g:"동물", k:"곰", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/vrnt/202312/nUf0PQbqP7jCi3kc.mp4"},
-  {g:"동물", k:"소", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202312/qUcHo5GbypIyiAAn.mp4"},
-  {g:"동물", k:"여우", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202406/KfqeB8mu7tOi2nIW.mp4"},
-  {g:"사람", k:"아들", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/ySRh98qSskhtvBJ1.mp4"},
-  {g:"사람", k:"아빠, 아버지, 부친", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/Sb05avoHmbC6fv5g.mp4"},
-  {g:"사람", k:"엄마, 어머니, 모친", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/J1Hp2oInFBqh95Lu.mp4"},
-  {g:"사람", k:"여동생, 누이", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/aBgnrbuZ9e2b33Lz.mp4"},
-  {g:"사람", k:"할머니", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/rYW4xUR6VmLBuJFd.mp4"},
-  {g:"사람", k:"오빠", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/H5l9tYCkK5xj8nwU.mp4"},
-  {g:"사람", k:"할아버지", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/mkxBamWAUjxnMtZt.mp4"},
-  {g:"색", k:"검은색", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/202212/28/2OXaM7iOFo5065Zo.mp4"},
-  {g:"색", k:"빨간색", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/202212/10/NHieOVvFR0VaFYEn.mp4"},
-  {g:"색", k:"하얀색", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/202210/20/30XYi2pJWYNjxySZ.mp4"},
-  {g:"색", k:"주황색", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/202212/26/PyKvuVu2NfVvObLq.mp4"},
-  {g:"색", k:"파란색", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/hNf6R5dImW2yt9hU.mp4"},
-  {g:"색", k:"분홍색", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/vrnt/202410/spzyQety8COJ5W9o.mp4"},
-  {g:"색", k:"초록색", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/sq1MD78qa1I79t2t.mp4"},
-  {g:"요일", k:"목요일", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/202210/20/oZKb2TdoZh4CBsrC.mp4"},
-  {g:"요일", k:"월요일", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/FPHv8HftozvrxbL2.mp4"},
-  {g:"요일", k:"일요일", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/Lt2TBbcs0Rcw3vlK.mp4"},
-  {g:"요일", k:"화요일", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202405/mhw2TerquZORc2Lo.mp4"},
-  {g:"요일", k:"수요일", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202405/YJtPw4n2s3t5fFHl.mp4"},
-  {g:"요일", k:"금요일", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/PPnrnGlvuZzxqpxm.mp4"},
-  {g:"요일", k:"토요일", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/TzSguYeULW2O3GL3.mp4"},
-  {g:"운동", k:"볼링, 볼링을 하다", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/202212/30/mV9FhyIqiSLl9mj3.mp4"},
-  {g:"운동", k:"야구", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/cwMnrnBUkZHycILY.mp4"},
-  {g:"운동", k:"축구, 축구하다", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/bJreQiuUoj1daN1F.mp4"},
-  {g:"운동", k:"배드민턴, 배드민턴을 치다", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/CeXEUeaSIfj3nEhg.mp4"},
-  {g:"운동", k:"유도", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/ur0Mpee6lHp878IT.mp4"},
-  {g:"운동", k:"양궁", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/QFKRcg3kI3V0EtcE.mp4"},
-  {g:"운동", k:"씨름", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202502/Lw0IqYbvrkvTFP8D.mp4"},
-  {g:"운동", k:"펜싱", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202508/xssW3ekLWyQOoAV6.mp4"},
-  {g:"운동", k:"골프, 골프를 치다", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202508/G33iLhQtU4UrOVOp.mp4"},
-  {g:"운동", k:"배구", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202508/npCgzK8q9fq5fNfZ.mp4"},
-  {g:"운동", k:"검도", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202508/9ecloSN80nqbIKvu.mp4"},
-  {g:"운동", k:"탁구, 탁구를 치다", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/F2wHmpNauZOshY85.mp4"},
-  {g:"운동", k:"테니스", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/o2vuEbKeBhwZlQfS.mp4"},
-  {g:"운동", k:"수영, 수영하다", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/iQPiB9V45PWr0ffZ.mp4"},
-  {g:"운동", k:"스케이트, 스케이트를 타다", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/cXKXY0sdl8g0tdbD.mp4"},
-  {g:"운동", k:"스키, 스키를 타다", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/JwEIcxoHbiIFbiN1.mp4"},
-  {g:"운동", k:"태권도", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/AOIlGEShae16XaAE.mp4"},
-  {g:"음료", k:"소주", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202312/gCecMjLYSMSrN2FZ.mp4"},
-  {g:"음료", k:"갈색, 콜라", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/IfOgus79xrJUJ2YV.mp4"},
-  {g:"음료", k:"커피, 다방, 카페", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/dzfTVI4rYTZQWBQv.mp4"},
-  {g:"음료", k:"녹차", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/kNAyOf6RXmgQiUUR.mp4"},
-  {g:"음료", k:"막걸리", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/svQdbtY5z1HPymsd.mp4"},
-  {g:"음료", k:"사이다", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/2GsnJMZlfMU7Kmp2.mp4"},
-  {g:"음식", k:"빵", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202310/4TTOxqKn9hvUYe4j.mp4"},
-  {g:"음식", k:"과자", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/1kyQSyLcJEhFjbP1.mp4"},
-  {g:"음식", k:"냉면", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/npMaMnXHWqUkqQ8F.mp4"},
-  {g:"음식", k:"두부", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/bEnFPoKhvgNAb17J.mp4"},
-  {g:"음식", k:"떡", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/fcvkDvtxHq8wOrzk.mp4"},
-  {g:"음식", k:"떡국", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/QqNYd7ks2bAR8CGq.mp4"},
-  {g:"음식", k:"라면", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/rJVVRUHGjpxogLJP.mp4"},
-  {g:"음식", k:"만두, 만두를 빚다", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/FfsA19G2k4a4kdmB.mp4"},
-  {g:"음식", k:"비빔밥, 볶음밥", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/RkCPR2ef6ceSTs63.mp4"},
-  {g:"음식", k:"사탕", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/hQKbZzrmSPVgng3Y.mp4"},
-  {g:"음식", k:"식빵", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/wYC3WquWMtp7thi2.mp4"},
-  {g:"음식", k:"자장면", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/KZ38Hww7yE7eiGrN.mp4"},
-  {g:"음식", k:"칼국수", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/YXDlB5LqLVqCv3lJ.mp4"},
-  {g:"음식", k:"케이크", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/TjjaMvgeZumP8WXb.mp4"},
-  {g:"음식", k:"피자", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/Cg9H4YP93NFP0pj4.mp4"},
-  {g:"음식", k:"사과", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202509/54oELW4xk6bFJbFa.mp4"},
-  {g:"장소", k:"학교", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202310/3Qq4w2F1bVzszAIk.mp4"},
-  {g:"장소", k:"병원", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/XaQZKIUxdDeBeqdZ.mp4"},
-  {g:"장소", k:"카페", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/U2jUWD3zlhhLzzPX.mp4"},
-  {g:"장소", k:"가게", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/202210/18/qZkXg3OapMSspYK1.mp4"},
-  {g:"장소", k:"공원", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/202212/30/Ek5yopyCrtBWLkRE.mp4"},
-  {g:"장소", k:"치과", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/DzI60KLMzqbAmvcw.mp4"},
-  {g:"장소", k:"집", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202310/udCvSEFztUKh9xcv.mp4"},
-  {g:"장소", k:"회사", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/tEp7RYQrWNveYOU3.mp4"},
-  {g:"채소", k:"배추", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202407/5LaD2IdahhOYeIGy.mp4"},
-  {g:"채소", k:"콩", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/bZEUVgmRAyzFrc7V.mp4"},
-  {g:"채소", k:"감자", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/ODDiYzD9G51FKsYJ.mp4"},
-  {g:"채소", k:"무", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/RaZBoY2D8EYOepcd.mp4"},
-  {g:"채소", k:"오이", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/oEWfyNlATDVehrt4.mp4"},
-];
-
-/* ===== 2) 유틸 ===== */
-const $ = s => document.querySelector(s);
-function shuffle(arr){ const a=[...arr]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]];} return a; }
-function pickDistractor(correctIdx){ let j=Math.floor(Math.random()*ITEMS.length); if(j===correctIdx) j=(j+1)%ITEMS.length; return ITEMS[j]; }
-
-/* ===== 3) 상태 ===== */
-let order=[], idx=0, phase='idle';
-let current=null, distractor=null, correctOnLeft=true;
-
-/* ===== 4) 엘리먼트 ===== */
-const meta = $('#meta'), promptEl = $('#prompt'), bar = $('#bar');
-const primaryBtn = $('#primaryBtn'), restartBtn = $('#restartBtn'), skipBtn = $('#skipBtn');
-const stageAnswer = $('#stageAnswer');
-const answerLabel = $('#answerLabel');
-const answerVideo = $('#answerVideo');
-const nextBtn = $('#nextBtn');
-
-// 오버레이(전체화면) 요소
-const fsDual = $('#fsDual');
-const fsVidL = $('#fsVidL');
-const fsVidR = $('#fsVidR');
-const fsToAnswerBtn = $('#fsToAnswerBtn');
-const fsCloseBtn = $('#fsCloseBtn');
-
-/* ===== 5) 렌더 & 진행 ===== */
-function updateMeta(){ meta.textContent = idx<order.length ? `문제 ${idx+1} / ${order.length}` : `완료`; const pct = idx<order.length ? Math.round(((idx)/order.length)*100) : 100; bar.style.width = pct+"%"; }
-function showPrompt(){
-  phase='prompt';
-  if(document.fullscreenElement){ document.exitFullscreen().catch(()=>{}); }
-  fsDual.style.display='none';
-  stageAnswer.style.display='none';
-  window.scrollTo(0,0);
-  current = ITEMS[ order[idx] ];
-  promptEl.innerHTML = `<span class="badge">표제어</span> ${current.k} <span class="muted" style="font-weight:400">(${current.g})</span>`;
-  primaryBtn.textContent = '▶ 영상 보기';
-  updateMeta();
-}
-function showDual(){
-  phase='dual';
-  window.scrollTo(0,0);
-  distractor = pickDistractor(order[idx]);
-  correctOnLeft = Math.random()<0.5;
-  const left = correctOnLeft ? current : distractor;
-  const right = correctOnLeft ? distractor : current;
-  fsVidL.src = left.u; fsVidR.src = right.u;
-  const playSafe = v => v.play().catch(()=>{}); playSafe(fsVidL); playSafe(fsVidR);
-  fsDual.style.display='block';
-  // 가능한 경우 컨테이너 전체화면 진입 (버튼 포함)
-  if(!document.fullscreenElement && fsDual.requestFullscreen){ fsDual.requestFullscreen().catch(()=>{}); }
-}
-function showAnswer(){
-  phase='answer';
-  if(document.fullscreenElement){ document.exitFullscreen().catch(()=>{}); }
-  fsDual.style.display='none';
-  window.scrollTo(0,0);
-  stageAnswer.style.display='';
-  answerLabel.textContent = `${current.k}  (${current.g})`;
-  answerVideo.src = current.u; answerVideo.currentTime = 0; answerVideo.play().catch(()=>{});
-}
-function nextQuestion(){ idx++; if(idx>=order.length){ phase='done'; promptEl.textContent='수고하셨습니다! [재시작]을 눌러 새 회차를 진행하세요.'; primaryBtn.textContent='다시 시작'; stageAnswer.style.display='none'; updateMeta(); window.scrollTo(0,0); return;} showPrompt(); }
-function startNewRound(){ order = shuffle(ITEMS.map((_,i)=>i)); idx=0; phase='prompt'; showPrompt(); }
-
-/* ===== 6) 이벤트 ===== */
-primaryBtn.addEventListener('click', ()=>{ if(phase==='idle' || phase==='done'){ startNewRound(); return;} if(phase==='prompt'){ showDual(); return;} });
-restartBtn.addEventListener('click', startNewRound);
-skipBtn.addEventListener('click', ()=>{ if(phase!=='idle'){ nextQuestion(); } });
-fsToAnswerBtn.addEventListener('click', showAnswer);
-fsCloseBtn.addEventListener('click', ()=>{ if(document.fullscreenElement){ document.exitFullscreen().catch(()=>{}); } fsDual.style.display='none'; });
-nextBtn.addEventListener('click', ()=>{ window.scrollTo(0,0); nextQuestion(); });
-
-// ESC로도 닫기
-window.addEventListener('keydown', (e)=>{ if(e.key==='Escape' && document.fullscreenElement){ document.exitFullscreen().catch(()=>{}); fsDual.style.display='none'; }});
-
-// iOS 사파리 일부에서 비디오가 버튼을 가리는 현상 대응: 버튼을 비디오 위 레이어에 배치(z-index)
-// 추가로 비디오 탭으로 일시정지 되지 않도록 컨트롤 제거 (controls 속성 없음)
-
-/* ===== 7) 데이터 에코 (검토용) ===== */
-(function echo(){ const box = document.getElementById('dataEcho'); box.innerHTML = ITEMS.map((x,i)=>`${i+1}. [${x.g}] ${x.k} — <span class="muted">${x.u}</span>`).join('<br>'); })();
-
-updateMeta();
-</script>
-</body>
+	<!doctype html>
+	<html lang="ko">
+	<head>
+	  <meta charset="utf-8" />
+	  <meta name="viewport" content="width=device-width, initial-scale=1" />
+	  <title>수어 영상퀴즈</title>
+	  <style>
+	    :root{ --bg:#0f172a; --panel:#111827; --muted:#94a3b8; --text:#e5e7eb; --accent:#22c55e; --accent-2:#38bdf8; }
+	    *{box-sizing:border-box}
+	    html,body{margin:0; background:var(--bg); color:var(--text); font-family: system-ui, -apple-system, Segoe UI, Roboto, Noto Sans KR, sans-serif;}
+	    .wrap{max-width:1100px;margin:0 auto;padding:20px;text-align:center}
+	    header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+	    header h1{font-size:clamp(18px,3.2vw,28px);margin:0}
+	    .card{background:linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02)); border:1px solid rgba(255,255,255,0.08); border-radius:16px; padding:18px; box-shadow: 0 10px 30px rgba(0,0,0,.3); text-align:center}
+	    .label{font-size:clamp(24px,4vw,36px);font-weight:800;display:inline-block;margin:20px auto}
+	    .badge{display:inline-block; padding:6px 12px; border-radius:999px; font-size:14px; background:#0b1220; border:1px solid rgba(255,255,255,0.1); color:var(--muted)}
+	    .progress{height:10px; background:#111827; border-radius:999px; overflow:hidden; border:1px solid rgba(255,255,255,0.08);margin:10px auto;width:60%}
+	    .bar{height:100%; background:linear-gradient(90deg, var(--accent), var(--accent-2)); width:0%}
+	    button{background:linear-gradient(135deg, var(--accent), #16a34a); color:#00110a; font-weight:700; border:0; border-radius:12px; padding:16px 26px; font-size:22px; cursor:pointer; transition:transform .05s ease, filter .2s ease; touch-action:manipulation; margin-top:20px}
+	    button:hover{filter:brightness(1.05)}
+	    button:active{transform:scale(0.98)}
+	    .footnote{font-size:12px;color:var(--muted)}
+	
+	    /* ===== 전체화면(오버레이) 이중 영상 ===== */
+	    .fsDual{position:fixed; inset:0; background:#000; z-index:9999; display:none; padding:12px}
+	    .fsGrid{height:100%; display:grid; grid-template-columns:1fr; gap:12px}
+	    @media(min-width:720px){ .fsGrid{grid-template-columns:1fr 1fr} }
+	    .fsDual video{width:100%; height:100%; object-fit:contain; background:#000; border-radius:8px; z-index:1}
+	    .fsLayer{position:relative; width:100%; height:100%}
+	    .btnTrap{position:absolute; top:12px; right:14px; z-index:10000; display:flex; gap:8px}
+	    .ghostBtn{background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.25); color:#fff; padding:10px 12px; border-radius:10px; font-weight:800; cursor:pointer; touch-action:manipulation}
+	    .ghostBtn:active{transform:scale(.98)}
+	  </style>
+	</head>
+	<body>
+	  <div class="wrap">
+	    <header>
+	      <h1>수어 영상퀴즈</h1>
+	      <div class="toolbar">
+	        <button id="restartBtn" class="ghostBtn" type="button">🔁 재시작</button>
+	        <button id="skipBtn" class="ghostBtn" type="button">⏭️ 건너뛰기</button>
+	      </div>
+	    </header>
+	
+	    <div class="card">
+	      <div id="meta" class="badge"></div>
+	      <div id="prompt" class="label">시작을 누르면 표제어부터 제시됩니다.</div>
+	      <div class="progress"><div class="bar" id="bar"></div></div>
+	      <button id="primaryBtn" type="button">▶ 영상 보기</button>
+	    </div>
+	
+	    <div class="card" id="stageAnswer" style="display:none">
+	      <div class="badge">정답 영상</div>
+	      <div class="label" id="answerLabel"></div>
+	      <video id="answerVideo" preload="metadata" playsinline muted loop controls style="width:90%;border-radius:10px;"></video>
+	      <div><button id="nextBtn" type="button">다음 문제</button></div>
+	    </div>
+	  </div>
+	
+	  <div id="fsDual" class="fsDual" aria-label="두 영상 동시 재생">
+	    <div class="fsGrid">
+	      <div class="fsLayer">
+	        <video id="fsVidL" preload="metadata" playsinline muted loop></video>
+	        <div class="btnTrap">
+	          <button id="fsToAnswerBtn" class="ghostBtn" type="button">정답 화면</button>
+	          <button id="fsCloseBtn" class="ghostBtn" type="button">닫기</button>
+	        </div>
+	      </div>
+	      <div class="fsLayer">
+	        <video id="fsVidR" preload="metadata" playsinline muted loop></video>
+	      </div>
+	    </div>
+	  </div>
+	
+	<script>
+	const ITEMS = 
+	[
+	  {g:"곤충", k:"모기, 벌", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202310/asmMaKkD4GS7gkZA.mp4"},
+	  {g:"곤충", k:"개미", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202509/bH3K0cR4OFufrCwY.mp4"},
+	  {g:"과일", k:"수박", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202312/hQ2rRHRJ6PxsN6Hu.mp4"},
+	  {g:"과일", k:"감", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/mCyt3d67zZ4XAzpM.mp4"},
+	  {g:"과일", k:"포도", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/MU9fwduuL3VV2pFA.mp4"},
+	  {g:"과일", k:"배[과일]", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/6QK9OBbhwtZK9626.mp4"},
+	  {g:"과일", k:"딸기", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/dFwIISHASItQYrv3.mp4"},
+	  {g:"과일", k:"바나나", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/I0Z2L1zObk3s113i.mp4"},
+	  {g:"과일", k:"참외", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/VIc6mXpupx1v4skZ.mp4"},
+	  {g:"교통", k:"오토바이, 오토바이를 타다", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202310/pfHjaHHmFUhEyiXI.mp4"},
+	  {g:"교통", k:"비행기", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/Gh871U2oWIHK8s6n.mp4"},
+	  {g:"교통", k:"자전거", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/9c4AT8W4qyWBH2Es.mp4"},
+	  {g:"교통", k:"지하철, 전동차", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/U1kvtqDGpOloKjHO.mp4"},
+	  {g:"교통", k:"택시", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/x8PUpOjyV6tblWmK.mp4"},
+	  {g:"교통", k:"차", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/CnS4kM3pofNo1brv.mp4"},
+	  {g:"동물", k:"오징어", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202309/TVsGvzHe5upx1lze.mp4"},
+	  {g:"동물", k:"개구리", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202312/4eKYDo9An4ssdpR5.mp4"},
+	  {g:"동물", k:"고양이", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202312/LhvonIhGHuezvLtw.mp4"},
+	  {g:"동물", k:"곰", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/vrnt/202312/nUf0PQbqP7jCi3kc.mp4"},
+	  {g:"동물", k:"소", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202312/qUcHo5GbypIyiAAn.mp4"},
+	  {g:"동물", k:"여우", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202406/KfqeB8mu7tOi2nIW.mp4"},
+	  {g:"사람", k:"아들", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/ySRh98qSskhtvBJ1.mp4"},
+	  {g:"사람", k:"아빠, 아버지, 부친", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/Sb05avoHmbC6fv5g.mp4"},
+	  {g:"사람", k:"엄마, 어머니, 모친", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/J1Hp2oInFBqh95Lu.mp4"},
+	  {g:"사람", k:"여동생, 누이", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/aBgnrbuZ9e2b33Lz.mp4"},
+	  {g:"사람", k:"할머니", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/rYW4xUR6VmLBuJFd.mp4"},
+	  {g:"사람", k:"오빠", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/H5l9tYCkK5xj8nwU.mp4"},
+	  {g:"사람", k:"할아버지", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/mkxBamWAUjxnMtZt.mp4"},
+	  {g:"색", k:"검은색", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/202212/28/2OXaM7iOFo5065Zo.mp4"},
+	  {g:"색", k:"빨간색", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/202212/10/NHieOVvFR0VaFYEn.mp4"},
+	  {g:"색", k:"하얀색", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/202210/20/30XYi2pJWYNjxySZ.mp4"},
+	  {g:"색", k:"주황색", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/202212/26/PyKvuVu2NfVvObLq.mp4"},
+	  {g:"색", k:"파란색", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/hNf6R5dImW2yt9hU.mp4"},
+	  {g:"색", k:"분홍색", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/vrnt/202410/spzyQety8COJ5W9o.mp4"},
+	  {g:"색", k:"초록색", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/sq1MD78qa1I79t2t.mp4"},
+	  {g:"요일", k:"목요일", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/202210/20/oZKb2TdoZh4CBsrC.mp4"},
+	  {g:"요일", k:"월요일", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/FPHv8HftozvrxbL2.mp4"},
+	  {g:"요일", k:"일요일", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/Lt2TBbcs0Rcw3vlK.mp4"},
+	  {g:"요일", k:"화요일", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202405/mhw2TerquZORc2Lo.mp4"},
+	  {g:"요일", k:"수요일", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202405/YJtPw4n2s3t5fFHl.mp4"},
+	  {g:"요일", k:"금요일", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/PPnrnGlvuZzxqpxm.mp4"},
+	  {g:"요일", k:"토요일", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/TzSguYeULW2O3GL3.mp4"},
+	  {g:"운동", k:"볼링, 볼링을 하다", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/202212/30/mV9FhyIqiSLl9mj3.mp4"},
+	  {g:"운동", k:"야구", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/cwMnrnBUkZHycILY.mp4"},
+	  {g:"운동", k:"축구, 축구하다", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/bJreQiuUoj1daN1F.mp4"},
+	  {g:"운동", k:"배드민턴, 배드민턴을 치다", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/CeXEUeaSIfj3nEhg.mp4"},
+	  {g:"운동", k:"유도", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/ur0Mpee6lHp878IT.mp4"},
+	  {g:"운동", k:"양궁", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/QFKRcg3kI3V0EtcE.mp4"},
+	  {g:"운동", k:"씨름", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202502/Lw0IqYbvrkvTFP8D.mp4"},
+	  {g:"운동", k:"펜싱", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202508/xssW3ekLWyQOoAV6.mp4"},
+	  {g:"운동", k:"골프, 골프를 치다", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202508/G33iLhQtU4UrOVOp.mp4"},
+	  {g:"운동", k:"배구", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202508/npCgzK8q9fq5fNfZ.mp4"},
+	  {g:"운동", k:"검도", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202508/9ecloSN80nqbIKvu.mp4"},
+	  {g:"운동", k:"탁구, 탁구를 치다", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/F2wHmpNauZOshY85.mp4"},
+	  {g:"운동", k:"테니스", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/o2vuEbKeBhwZlQfS.mp4"},
+	  {g:"운동", k:"수영, 수영하다", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/iQPiB9V45PWr0ffZ.mp4"},
+	  {g:"운동", k:"스케이트, 스케이트를 타다", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/cXKXY0sdl8g0tdbD.mp4"},
+	  {g:"운동", k:"스키, 스키를 타다", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/JwEIcxoHbiIFbiN1.mp4"},
+	  {g:"운동", k:"태권도", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/AOIlGEShae16XaAE.mp4"},
+	  {g:"음료", k:"소주", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202312/gCecMjLYSMSrN2FZ.mp4"},
+	  {g:"음료", k:"갈색, 콜라", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/IfOgus79xrJUJ2YV.mp4"},
+	  {g:"음료", k:"커피, 다방, 카페", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/dzfTVI4rYTZQWBQv.mp4"},
+	  {g:"음료", k:"녹차", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/kNAyOf6RXmgQiUUR.mp4"},
+	  {g:"음료", k:"막걸리", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/svQdbtY5z1HPymsd.mp4"},
+	  {g:"음료", k:"사이다", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/2GsnJMZlfMU7Kmp2.mp4"},
+	  {g:"음식", k:"빵", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202310/4TTOxqKn9hvUYe4j.mp4"},
+	  {g:"음식", k:"과자", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/1kyQSyLcJEhFjbP1.mp4"},
+	  {g:"음식", k:"냉면", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/npMaMnXHWqUkqQ8F.mp4"},
+	  {g:"음식", k:"두부", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/bEnFPoKhvgNAb17J.mp4"},
+	  {g:"음식", k:"떡", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/fcvkDvtxHq8wOrzk.mp4"},
+	  {g:"음식", k:"떡국", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/QqNYd7ks2bAR8CGq.mp4"},
+	  {g:"음식", k:"라면", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/rJVVRUHGjpxogLJP.mp4"},
+	  {g:"음식", k:"만두, 만두를 빚다", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/FfsA19G2k4a4kdmB.mp4"},
+	  {g:"음식", k:"비빔밥, 볶음밥", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/RkCPR2ef6ceSTs63.mp4"},
+	  {g:"음식", k:"사탕", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/hQKbZzrmSPVgng3Y.mp4"},
+	  {g:"음식", k:"식빵", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/wYC3WquWMtp7thi2.mp4"},
+	  {g:"음식", k:"자장면", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/KZ38Hww7yE7eiGrN.mp4"},
+	  {g:"음식", k:"칼국수", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/YXDlB5LqLVqCv3lJ.mp4"},
+	  {g:"음식", k:"케이크", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/TjjaMvgeZumP8WXb.mp4"},
+	  {g:"음식", k:"피자", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/Cg9H4YP93NFP0pj4.mp4"},
+	  {g:"음식", k:"사과", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202509/54oELW4xk6bFJbFa.mp4"},
+	  {g:"장소", k:"학교", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202310/3Qq4w2F1bVzszAIk.mp4"},
+	  {g:"장소", k:"병원", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/XaQZKIUxdDeBeqdZ.mp4"},
+	  {g:"장소", k:"카페", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/U2jUWD3zlhhLzzPX.mp4"},
+	  {g:"장소", k:"가게", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/202210/18/qZkXg3OapMSspYK1.mp4"},
+	  {g:"장소", k:"공원", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/202212/30/Ek5yopyCrtBWLkRE.mp4"},
+	  {g:"장소", k:"치과", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/DzI60KLMzqbAmvcw.mp4"},
+	  {g:"장소", k:"집", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202310/udCvSEFztUKh9xcv.mp4"},
+	  {g:"장소", k:"회사", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/tEp7RYQrWNveYOU3.mp4"},
+	  {g:"채소", k:"배추", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202407/5LaD2IdahhOYeIGy.mp4"},
+	  {g:"채소", k:"콩", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/bZEUVgmRAyzFrc7V.mp4"},
+	  {g:"채소", k:"감자", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/ODDiYzD9G51FKsYJ.mp4"},
+	  {g:"채소", k:"무", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/RaZBoY2D8EYOepcd.mp4"},
+	  {g:"채소", k:"오이", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/oEWfyNlATDVehrt4.mp4"},
+	];
+	const $ = s=>document.querySelector(s);
+	let order=[],idx=0,phase='idle',current=null,distractor=null,correctOnLeft=true;
+	const meta=$('#meta'),promptEl=$('#prompt'),bar=$('#bar');
+	const primaryBtn=$('#primaryBtn'),restartBtn=$('#restartBtn'),skipBtn=$('#skipBtn');
+	const stageAnswer=$('#stageAnswer'),answerLabel=$('#answerLabel'),answerVideo=$('#answerVideo'),nextBtn=$('#nextBtn');
+	const fsDual=$('#fsDual'),fsVidL=$('#fsVidL'),fsVidR=$('#fsVidR'),fsToAnswerBtn=$('#fsToAnswerBtn'),fsCloseBtn=$('#fsCloseBtn');
+	function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+	function pickDistractor(i){let j=Math.floor(Math.random()*ITEMS.length);if(j===i)j=(j+1)%ITEMS.length;return ITEMS[j];}
+	function updateMeta(){meta.textContent=`문제 ${idx+1} / ${order.length}`;bar.style.width=Math.round((idx/order.length)*100)+"%";}
+	function showPrompt(){phase='prompt';fsDual.style.display='none';stageAnswer.style.display='none';window.scrollTo(0,0);current=ITEMS[order[idx]];promptEl.innerHTML=`<span class='badge'>표제어</span> <b>${current.k}</b> <span class='muted'>(${current.g})</span>`;primaryBtn.textContent='▶ 영상 보기';updateMeta();}
+	function showDual(){phase='dual';window.scrollTo(0,0);distractor=pickDistractor(order[idx]);correctOnLeft=Math.random()<0.5;const L=correctOnLeft?current:distractor;const R=correctOnLeft?distractor:current;fsVidL.src=L.u;fsVidR.src=R.u;[fsVidL,fsVidR].forEach(v=>v.play().catch(()=>{}));fsDual.style.display='block';if(!document.fullscreenElement&&fsDual.requestFullscreen){fsDual.requestFullscreen().catch(()=>{});}}
+	function showAnswer(){phase='answer';if(document.fullscreenElement){document.exitFullscreen().catch(()=>{});}fsDual.style.display='none';stageAnswer.style.display='';answerLabel.textContent=`${current.k} (${current.g})`;answerVideo.src=current.u;answerVideo.currentTime=0;answerVideo.play().catch(()=>{});}
+	function nextQuestion(){idx++;if(idx>=order.length){phase='done';promptEl.textContent='수고하셨습니다!';primaryBtn.textContent='다시 시작';stageAnswer.style.display='none';updateMeta();window.scrollTo(0,0);return;}showPrompt();}
+	function startNew(){order=shuffle(ITEMS.map((_,i)=>i));idx=0;showPrompt();}
+	primaryBtn.onclick=()=>{if(phase==='idle'||phase==='done')startNew();else if(phase==='prompt')showDual();};
+	restartBtn.onclick=startNew;skipBtn.onclick=()=>nextQuestion();fsToAnswerBtn.onclick=showAnswer;fsCloseBtn.onclick=()=>{if(document.fullscreenElement)document.exitFullscreen();fsDual.style.display='none';};nextBtn.onclick=()=>{window.scrollTo(0,0);nextQuestion();};
+	startNew();
+	</script>
+	</body>
 </html>
