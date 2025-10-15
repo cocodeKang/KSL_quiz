@@ -6,21 +6,15 @@
   <title>수어 영상퀴즈</title>
   <style>
     :root{
-      --bg:#0f172a; /* slate-900 */
-      --panel:#111827; /* gray-900 */
-      --muted:#94a3b8; /* slate-400 */
-      --text:#e5e7eb; /* gray-200 */
-      --accent:#22c55e; /* green-500 */
-      --accent-2:#38bdf8; /* sky-400 */
+      --bg:#0f172a; --panel:#111827; --muted:#94a3b8; --text:#e5e7eb;
+      --accent:#22c55e; --accent-2:#38bdf8;
     }
     *{box-sizing:border-box}
-    body{
-      margin:0; background:var(--bg); color:var(--text);
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Noto Sans KR, sans-serif;
-    }
+    html,body{margin:0; background:var(--bg); color:var(--text);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Noto Sans KR, sans-serif;}
     .wrap{max-width:1100px;margin:0 auto;padding:20px}
     header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
-    header h1{font-size:clamp(18px,3.2vw,28px);margin:0;letter-spacing:0.2px}
+    header h1{font-size:clamp(18px,3.2vw,28px);margin:0}
     .card{background:linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
       border:1px solid rgba(255,255,255,0.08); border-radius:16px; padding:18px; box-shadow: 0 10px 30px rgba(0,0,0,.3)}
     .row{display:flex;gap:16px;flex-wrap:wrap}
@@ -34,22 +28,23 @@
     button:hover{filter:brightness(1.05)}
     button:active{transform:scale(0.98)}
     button.secondary{background:linear-gradient(135deg, var(--accent-2), #0284c7); color:#001018}
-    .toolbar{display:flex;gap:8px;flex-wrap:wrap}
     .panel{display:flex;flex-direction:column; gap:12px}
     .label{font-size:clamp(18px,3.2vw,26px);font-weight:800}
     .badge{display:inline-block; padding:4px 10px; border-radius:999px; font-size:12px; background:#0b1220; border:1px solid rgba(255,255,255,0.1); color:var(--muted)}
-    .video-grid{display:grid;grid-template-columns:1fr; gap:12px}
-    @media(min-width:720px){ .video-grid{ grid-template-columns:1fr 1fr } }
-    video{width:100%; aspect-ratio:16/9; background:#000; border-radius:12px; outline:0; border:1px solid rgba(255,255,255,0.08)}
-    .center{text-align:center}
-    .spacer{height:8px}
     .progress{height:10px; background:#111827; border-radius:999px; overflow:hidden; border:1px solid rgba(255,255,255,0.08)}
     .bar{height:100%; background:linear-gradient(90deg, var(--accent), var(--accent-2)); width:0%}
-    .sr{position:absolute;left:-9999px}
+    .spacer{height:8px}
     .footnote{font-size:12px;color:var(--muted)}
     .list{max-height:240px; overflow:auto; border:1px dashed rgba(255,255,255,0.15); border-radius:12px; padding:8px}
-    .list details{padding:6px 4px}
-    .list summary{cursor:pointer}
+
+    /* ===== 전체화면(오버레이) 이중 영상 ===== */
+    .fsDual{position:fixed; inset:0; background:#000; z-index:9999; display:none; padding:12px}
+    .fsGrid{height:100%; display:grid; grid-template-columns:1fr; gap:12px}
+    @media(min-width:720px){ .fsGrid{grid-template-columns:1fr 1fr} }
+    .fsDual video{width:100%; height:100%; object-fit:contain; background:#000; border-radius:8px}
+    .fsDual .topbar{position:absolute; top:10px; right:12px; display:flex; gap:8px}
+    .ghostBtn{background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:#fff; padding:10px 12px; border-radius:10px; font-weight:700; cursor:pointer}
+    .ghostBtn:active{transform:scale(.98)}
   </style>
 </head>
 <body>
@@ -57,8 +52,8 @@
     <header>
       <h1>수어 영상퀴즈</h1>
       <div class="toolbar">
-        <button id="restartBtn" class="secondary" title="처음부터 랜덤 재시작">🔁 재시작</button>
-        <button id="skipBtn" title="현재 문제 건너뛰기">⏭️ 건너뛰기</button>
+        <button id="restartBtn" class="secondary" title="처음부터 랜덤 재시작" type="button">🔁 재시작</button>
+        <button id="skipBtn" title="현재 문제 건너뛰기" type="button">⏭️ 건너뛰기</button>
       </div>
     </header>
 
@@ -71,41 +66,29 @@
           <div class="progress" aria-hidden="true"><div class="bar" id="bar"></div></div>
           <div class="spacer"></div>
           <div class="center">
-            <button id="primaryBtn">▶ 시작</button>
+            <button id="primaryBtn" type="button">▶ 시작</button>
           </div>
         </div>
         <div class="col">
           <div class="badge">진행 안내</div>
           <ol class="muted" style="margin:8px 0 0 18px; line-height:1.6">
             <li><b>표제어 화면</b> — 한국어 대응표현만 보여줍니다.</li>
-            <li><b>두 영상 동시 재생</b> — 정답/오답 영상 2개가 동시에 (자동 재생·무음).</li>
+            <li><b>두 영상 동시 재생</b> — 정답/오답 2개 영상이 전용 전체화면 오버레이로 자동 재생(무음).</li>
             <li><b>정답 확인</b> — 정답 영상만 다시 크게 재생합니다.</li>
           </ol>
-          <p class="footnote">모든 문제와 보기 위치는 매 회차마다 랜덤입니다. (모바일 전체화면은 동영상 우측 하단에서 가능)</p>
+          <p class="footnote">모든 문제와 보기 위치는 매 회차마다 랜덤입니다.</p>
         </div>
       </div>
     </div>
 
-    <div class="card panel" id="stageDual" style="display:none">
-      <div class="badge" id="dualBadge">동시 재생</div>
-      <div class="video-grid">
-        <figure>
-          <figcaption class="muted">A</figcaption>
-          <video id="vidA" preload="metadata" playsinline muted loop></video>
-        </figure>
-        <figure>
-          <figcaption class="muted">B</figcaption>
-          <video id="vidB" preload="metadata" playsinline muted loop></video>
-        </figure>
-      </div>
-      <div class="center"><button id="toAnswerBtn">정답 화면으로</button></div>
-    </div>
+    <!-- (기존 stageDual 카드는 숨김/미사용) -->
+    <div class="card panel" id="stageDual" style="display:none"></div>
 
     <div class="card panel" id="stageAnswer" style="display:none">
       <div class="badge">정답 영상</div>
       <div class="label" id="answerLabel"></div>
       <video id="answerVideo" preload="metadata" playsinline muted loop controls></video>
-      <div class="center"><button id="nextBtn">다음 문제</button></div>
+      <div class="center"><button id="nextBtn" type="button">다음 문제</button></div>
     </div>
 
     <details class="list" style="margin-top:14px">
@@ -114,8 +97,20 @@
     </details>
   </div>
 
+  <!-- ===== 전체화면 오버레이: 힌트/텍스트 없이 영상만 ===== -->
+  <div id="fsDual" class="fsDual" aria-label="두 영상 동시 재생">
+    <div class="topbar">
+      <button id="fsToAnswerBtn" class="ghostBtn" type="button">정답 화면</button>
+      <button id="fsCloseBtn" class="ghostBtn" title="닫기" type="button">닫기</button>
+    </div>
+    <div class="fsGrid">
+      <video id="fsVidL" preload="metadata" playsinline muted loop></video>
+      <video id="fsVidR" preload="metadata" playsinline muted loop></video>
+    </div>
+  </div>
+
 <script>
-// ====== 1) 데이터 ======
+/* ===== 1) 데이터 (사용자 제공 목록) ===== */
 const ITEMS = [
   {g:"곤충", k:"모기, 벌", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202310/asmMaKkD4GS7gkZA.mp4"},
   {g:"곤충", k:"개미", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202509/bH3K0cR4OFufrCwY.mp4"},
@@ -213,61 +208,44 @@ const ITEMS = [
   {g:"채소", k:"오이", u:"https://ksldict.korean.go.kr/kslserv/signFile/video/main/202410/oEWfyNlATDVehrt4.mp4"},
 ];
 
-// ====== 2) 유틸 ======
-const $ = sel => document.querySelector(sel);
-function shuffle(arr){
-  const a = [...arr];
-  for(let i=a.length-1;i>0;i--){
-    const j = Math.floor(Math.random()*(i+1));
-    [a[i],a[j]]=[a[j],a[i]];
-  }
-  return a;
-}
-function pickDistractor(correctIdx){
-  let j = Math.floor(Math.random()*ITEMS.length);
-  if(j===correctIdx) j = (j+1) % ITEMS.length;
-  return ITEMS[j];
-}
+/* ===== 2) 유틸 ===== */
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+function shuffle(arr){ const a=[...arr]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]];} return a; }
+function pickDistractor(correctIdx){ let j=Math.floor(Math.random()*ITEMS.length); if(j===correctIdx) j=(j+1)%ITEMS.length; return ITEMS[j]; }
 
-// ====== 3) 상태 ======
-let order = [];
-let idx = 0; // 현재 문제 인덱스 (order 기준)
-let phase = 'idle'; // 'prompt' | 'dual' | 'answer'
-let current = null; // 현재 정답 아이템
-let distractor = null; // 오답 아이템
-let correctOnLeft = true; // 좌/우 랜덤 배치
+/* ===== 3) 상태 ===== */
+let order=[], idx=0, phase='idle';
+let current=null, distractor=null, correctOnLeft=true;
 
-// ====== 4) 엘리먼트 ======
-const meta = $('#meta');
-const promptEl = $('#prompt');
-const bar = $('#bar');
-const primaryBtn = $('#primaryBtn');
-const restartBtn = $('#restartBtn');
-const skipBtn = $('#skipBtn');
-
-const stageDual = $('#stageDual');
-const dualBadge = $('#dualBadge');
-const vidA = $('#vidA');
-const vidB = $('#vidB');
-const toAnswerBtn = $('#toAnswerBtn');
+/* ===== 4) 엘리먼트 ===== */
+const meta = $('#meta'), promptEl = $('#prompt'), bar = $('#bar');
+const primaryBtn = $('#primaryBtn'), restartBtn = $('#restartBtn'), skipBtn = $('#skipBtn');
 
 const stageAnswer = $('#stageAnswer');
 const answerLabel = $('#answerLabel');
 const answerVideo = $('#answerVideo');
 const nextBtn = $('#nextBtn');
 
-// ====== 5) 렌더 & 진행 ======
+// 오버레이(전체화면) 요소
+const fsDual = $('#fsDual');
+const fsVidL = $('#fsVidL');
+const fsVidR = $('#fsVidR');
+const fsToAnswerBtn = $('#fsToAnswerBtn');
+const fsCloseBtn = $('#fsCloseBtn');
+
+/* ===== 5) 렌더 & 진행 ===== */
 function updateMeta(){
-  meta.textContent = idx<order.length
-    ? `문제 ${idx+1} / ${order.length}`
-    : `완료`;
+  meta.textContent = idx<order.length ? `문제 ${idx+1} / ${order.length}` : `완료`;
   const pct = idx<order.length ? Math.round(((idx)/order.length)*100) : 100;
   bar.style.width = pct+"%";
 }
 function showPrompt(){
-  phase = 'prompt';
-  stageDual.style.display = 'none';
-  stageAnswer.style.display = 'none';
+  phase='prompt';
+  if(document.fullscreenElement){ document.exitFullscreen().catch(()=>{}); }
+  fsDual.style.display='none';
+  stageAnswer.style.display='none';
+  window.scrollTo(0,0);
 
   current = ITEMS[ order[idx] ];
   promptEl.innerHTML = `<span class="badge">표제어</span> ${current.k} <span class="muted" style="font-weight:400">(${current.g})</span>`;
@@ -275,27 +253,32 @@ function showPrompt(){
   updateMeta();
 }
 function showDual(){
-  phase = 'dual';
+  phase='dual';
+  window.scrollTo(0,0);
+
   distractor = pickDistractor(order[idx]);
   correctOnLeft = Math.random()<0.5;
-
   const left = correctOnLeft ? current : distractor;
   const right = correctOnLeft ? distractor : current;
 
-  vidA.src = left.u;
-  vidB.src = right.u;
+  fsVidL.src = left.u;
+  fsVidR.src = right.u;
 
-  // 자동 재생 (모바일 호환을 위해 muted/playsinline 세팅됨)
   const playSafe = v => v.play().catch(()=>{});
-  playSafe(vidA); playSafe(vidB);
+  playSafe(fsVidL); playSafe(fsVidR);
 
-  dualBadge.textContent = `동시 재생 · 정답은 ${correctOnLeft? 'A':'B'} 중 하나`;
-  stageDual.style.display = '';
+  fsDual.style.display='block';
+  if(!document.fullscreenElement && fsDual.requestFullscreen){
+    fsDual.requestFullscreen().catch(()=>{});
+  }
 }
 function showAnswer(){
-  phase = 'answer';
-  stageDual.style.display = 'none';
-  stageAnswer.style.display = '';
+  phase='answer';
+  if(document.fullscreenElement){ document.exitFullscreen().catch(()=>{}); }
+  fsDual.style.display='none';
+
+  window.scrollTo(0,0);
+  stageAnswer.style.display='';
   answerLabel.textContent = `${current.k}  (${current.g})`;
   answerVideo.src = current.u;
   answerVideo.currentTime = 0;
@@ -304,18 +287,16 @@ function showAnswer(){
 function nextQuestion(){
   idx++;
   if(idx>=order.length){
-    // 종료
     phase='done';
     promptEl.textContent = '수고하셨습니다! [재시작]을 눌러 새 회차를 진행하세요.';
     primaryBtn.textContent = '다시 시작';
-    stageDual.style.display='none';
     stageAnswer.style.display='none';
     updateMeta();
+    window.scrollTo(0,0);
     return;
   }
   showPrompt();
 }
-
 function startNewRound(){
   order = shuffle(ITEMS.map((_,i)=>i));
   idx = 0;
@@ -323,23 +304,24 @@ function startNewRound(){
   showPrompt();
 }
 
-// ====== 6) 이벤트 ======
+/* ===== 6) 이벤트 ===== */
 primaryBtn.addEventListener('click', ()=>{
   if(phase==='idle' || phase==='done'){ startNewRound(); return; }
   if(phase==='prompt'){ showDual(); return; }
 });
-
 restartBtn.addEventListener('click', startNewRound);
-skipBtn.addEventListener('click', ()=>{
-  if(phase==='dual' || phase==='answer' || phase==='prompt'){
-    nextQuestion();
-  }
+skipBtn.addEventListener('click', ()=>{ if(phase!=='idle'){ nextQuestion(); } });
+
+fsToAnswerBtn.addEventListener('click', showAnswer);
+fsCloseBtn.addEventListener('click', ()=>{
+  if(document.fullscreenElement){ document.exitFullscreen().catch(()=>{}); }
+  fsDual.style.display='none';
 });
 
-toAnswerBtn.addEventListener('click', showAnswer);
-nextBtn.addEventListener('click', nextQuestion);
+// 정답 -> 다음 문제 시 스크롤 고정(상단 유지)
+nextBtn.addEventListener('click', ()=>{ window.scrollTo(0,0); nextQuestion(); });
 
-// 키보드 단축키: Space=다음 단계, N=다음 문제, R=재시작
+// 키보드: Space(다음 단계), N(다음), R(재시작)
 window.addEventListener('keydown', (e)=>{
   if(['INPUT','TEXTAREA'].includes((e.target.tagName||''))) return;
   if(e.code==='Space'){ e.preventDefault();
@@ -348,17 +330,16 @@ window.addEventListener('keydown', (e)=>{
     else if(phase==='answer') nextQuestion();
     else startNewRound();
   }
-  if(e.key.toLowerCase()==='n'){ nextQuestion(); }
-  if(e.key.toLowerCase()==='r'){ startNewRound(); }
+  if(e.key.toLowerCase()==='n'){ e.preventDefault(); nextQuestion(); }
+  if(e.key.toLowerCase()==='r'){ e.preventDefault(); startNewRound(); }
 });
 
-// 데이터 에코 (검토용)
+/* ===== 7) 데이터 에코 (검토용) ===== */
 (function echo(){
   const box = document.getElementById('dataEcho');
   box.innerHTML = ITEMS.map((x,i)=>`${i+1}. [${x.g}] ${x.k} — <span class="muted">${x.u}</span>`).join('<br>');
 })();
 
-// 초기 상태 텍스트
 updateMeta();
 </script>
 </body>
